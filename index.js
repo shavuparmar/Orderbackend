@@ -3,9 +3,12 @@ dotenv.config({ path: "./.env" });
 
 import connectDB from "./src/config/db.js";
 import { app } from "./app.js";
+import { bootstrapAdmin } from "./bootstrapAdmin.js";
 
 connectDB()
-  .then(() => {
+  .then(async () => {
+    await bootstrapAdmin(); // ✅ CREATE ADMIN ON DEPLOY
+
     app.listen(process.env.PORT || 9000, () => {
       console.log(`Server running on ${process.env.PORT || 9000}`);
       console.log("CROSS_ORIGIN =", process.env.CROSS_ORIGIN);
