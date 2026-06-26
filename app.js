@@ -5,11 +5,15 @@ import cookieParser from "cookie-parser";
 const app = express();
 
 const allowedOrigins = [
+  "http://localhost:3000",
   "http://localhost:5173",
+  "http://localhost:8081",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:8081",
   "https://ksorder.vercel.app",
   process.env.CROSS_ORIGIN,
 ].filter(Boolean);
-
+app.get("/ping", (req, res) => res.json({ ok: true }));
 const corsOptions = {
   origin: (origin, cb) => {
     // allow server-to-server / Postman (no origin)
@@ -43,7 +47,7 @@ import PaymentRouter from "./src/routes/payment.routes.js";
 import SettingsRouter from "./src/routes/settings.routes.js";
 import stockInRoutes from "./src/routes/stockIn.routes.js";
 
-
+// All Apilinks are available here 
 app.use("/api/v1/users", UserRouter);
 app.use("/api/v1/products", ProductRouter);
 app.use("/api/v1/orders", OrderRouter);
