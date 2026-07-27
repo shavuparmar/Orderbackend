@@ -4,6 +4,17 @@ const paymentEntrySchema = new mongoose.Schema(
   {
     amount: { type: Number, required: true, min: 0 },
     note: { type: String, trim: true, maxlength: 500 },
+    paymentMethod: {
+      type: String,
+      enum: ["CASH", "UPI", "CARD", "ONLINE", "BANK_TRANSFER"],
+      default: "CASH",
+    },
+    status: {
+      type: String,
+      enum: ["SUCCESS", "PENDING", "FAILED"],
+      default: "SUCCESS",
+    },
+    transactionId: { type: String, trim: true },
     date: { type: Date, default: Date.now },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true }, // STAFF/ADMIN
   },

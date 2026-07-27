@@ -4,15 +4,36 @@ const changeRequestSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
 
-    type: { type: String, enum: ["PROFILE_UPDATE", "PASSWORD_RESET"], required: true },
+    title: { type: String, trim: true, default: "General Request" },
+    description: { type: String, trim: true, maxlength: 2000 },
 
-    // for PROFILE_UPDATE: payload = { customerName?, firstName?, email?, customerNumber? }
-    // for PASSWORD_RESET: payload = { newPassword }
-    payload: { type: Object, required: true },
+    type: {
+      type: String,
+      enum: [
+        "PROFILE_UPDATE",
+        "PASSWORD_RESET",
+        "PRODUCT_MODIFICATION",
+        "STOCK_CORRECTION",
+        "RETURN_ADJUSTMENT",
+        "ACCESS_REQUEST",
+        "FEATURE_REQUEST",
+        "GENERAL"
+      ],
+      default: "GENERAL",
+      required: true,
+      index: true
+    },
 
-    status: { type: String, enum: ["PENDING", "APPROVED", "REJECTED"], default: "PENDING", index: true },
+    payload: { type: Object, default: {} },
 
-    requestedByRole: { type: String, enum: ["USER", "STAFF"], required: true },
+    status: {
+      type: String,
+      enum: ["PENDING", "APPROVED", "REJECTED", "COMPLETED"],
+      default: "PENDING",
+      index: true
+    },
+
+    requestedByRole: { type: String, enum: ["USER", "STAFF", "ADMIN"], required: true },
     note: { type: String, trim: true, maxlength: 1000 },
 
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

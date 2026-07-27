@@ -5,7 +5,7 @@ import Order from "../models/order.model.js";
 import Product from "../models/product.model.js";
 
 const placeOrder = asynchandler(async (req, res) => {
-  const { items, note } = req.body;
+  const { items, note, kitchenNotes, deliveryAddress, paymentMethod } = req.body;
   if (!Array.isArray(items) || items.length === 0)
     throw new ApiError(400, "Items are required");
 
@@ -41,33 +41,122 @@ const placeOrder = asynchandler(async (req, res) => {
     subtotal,
     grandTotal,
     note,
+    kitchenNotes,
+    deliveryAddress,
+    paymentMethod: paymentMethod || "PENDING",
+    statusHistory: [
+      {
+        status: "PLACED",
+        note: "Order created",
+        updatedBy: req.user._id,
+        timestamp: new Date(),
+      },
+    ],
   });
+
+  // Automatically deduct inventory stock for each ordered item
+  for (const item of mapped) {
+    await Product.findByIdAndUpdate(item.productId, {
+      $inc: { stock: -item.qty },
+      updatedBy: req.user._id,
+    });
+  }
 
   return res.status(201).json(new ApiResponse(201, order, "Order placed"));
 });
 
 const myOrders = asynchandler(async (req, res) => {
-  const orders = await Order.find({ userId: req.user._id }).sort({
-    createdAt: -1,
-  });
-  return res.status(200).json(new ApiResponse(200, orders, "My orders"));
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 20;
+  const skip = (page - 1) * limit;
+
+  const query = { userId: req.user._id };
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        data: orders,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "My orders"
+    )
+  );
 });
 
 const updateMyOrder = asynchandler(async (req, res) => {
   const { id } = req.params;
-  const { note, items } = req.body;
+  const {
+    note,
+    kitchenNotes,
+    staffNotes,
+    priorityTag,
+    assignedStaff,
+    paymentMethod,
+    deliveryAddress,
+    items,
+    status,
+    statusNote,
+  } = req.body;
 
-  const order = await Order.findOne({ _id: id, userId: req.user._id });
+  const isStaffOrAdmin = ["STAFF", "ADMIN"].includes(req.user?.role);
+  const query = isStaffOrAdmin ? { _id: id } : { _id: id, userId: req.user._id };
+
+  const order = await Order.findOne(query);
   if (!order) throw new ApiError(404, "Order not found");
 
-  if (order.status !== "PLACED")
+  if (!isStaffOrAdmin && order.status !== "PLACED")
     throw new ApiError(403, "Order cannot be updated after confirmation");
 
-  // ✅ update note (optional)
-  order.note = note ?? order.note;
+  if (status && status !== order.status) {
+    const validStatuses = [
+      "PLACED",
+      "ACCEPTED",
+      "CONFIRMED",
+      "PREPARING",
+      "IN_PROGRESS",
+      "READY",
+      "COMPLETED",
+      "DELIVERED",
+      "CANCELLED",
+    ];
+    if (!validStatuses.includes(status)) {
+      throw new ApiError(400, `Invalid status. Must be one of: ${validStatuses.join(", ")}`);
+    }
+    order.status = status;
 
-  // ✅ update items (optional) - for edit order feature
-  if (items !== undefined) {
+    if (!order.statusHistory) order.statusHistory = [];
+    order.statusHistory.push({
+      status,
+      note: statusNote || `Status changed to ${status}`,
+      updatedBy: req.user._id,
+      timestamp: new Date(),
+    });
+  }
+
+  if (note !== undefined) order.note = note;
+  if (kitchenNotes !== undefined) order.kitchenNotes = kitchenNotes;
+  if (staffNotes !== undefined) order.staffNotes = staffNotes;
+  if (priorityTag !== undefined) order.priorityTag = priorityTag;
+  if (assignedStaff !== undefined) order.assignedStaff = assignedStaff;
+  if (paymentMethod !== undefined) order.paymentMethod = paymentMethod;
+  if (deliveryAddress !== undefined) order.deliveryAddress = deliveryAddress;
+
+  if (items !== undefined && !isStaffOrAdmin) {
     if (!Array.isArray(items) || items.length === 0)
       throw new ApiError(400, "Items are required");
 
@@ -95,35 +184,142 @@ const updateMyOrder = asynchandler(async (req, res) => {
     });
 
     const subtotal = mapped.reduce((sum, x) => sum + x.price * x.qty, 0);
-    const grandTotal = subtotal;
-
     order.items = mapped;
     order.subtotal = subtotal;
-    order.grandTotal = grandTotal;
+    order.grandTotal = subtotal;
   }
 
   await order.save();
 
-  return res.status(200).json(new ApiResponse(200, order, "Order updated"));
+  const populated = await Order.findById(order._id)
+    .populate("userId", "customerName firstName email customerNumber role")
+    .populate("assignedStaff", "customerName firstName email role");
+
+  return res.status(200).json(new ApiResponse(200, populated, "Order updated"));
+});
+
+const bulkUpdateOrderStatus = asynchandler(async (req, res) => {
+  const { orderIds, status, statusNote } = req.body;
+
+  if (!Array.isArray(orderIds) || orderIds.length === 0 || !status) {
+    throw new ApiError(400, "orderIds array and status are required");
+  }
+
+  const validStatuses = [
+    "PLACED",
+    "ACCEPTED",
+    "CONFIRMED",
+    "PREPARING",
+    "IN_PROGRESS",
+    "READY",
+    "COMPLETED",
+    "DELIVERED",
+    "CANCELLED",
+  ];
+  if (!validStatuses.includes(status)) {
+    throw new ApiError(400, `Invalid status. Must be one of: ${validStatuses.join(", ")}`);
+  }
+
+  const orders = await Order.find({ _id: { $in: orderIds } });
+
+  for (const order of orders) {
+    if (order.status !== status) {
+      order.status = status;
+      if (!order.statusHistory) order.statusHistory = [];
+      order.statusHistory.push({
+        status,
+        note: statusNote || `Bulk status updated to ${status}`,
+        updatedBy: req.user._id,
+        timestamp: new Date(),
+      });
+      await order.save();
+    }
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { updatedCount: orders.length },
+      `Updated ${orders.length} orders to ${status}`
+    )
+  );
 });
 
 const listAllOrders = asynchandler(async (req, res) => {
-  const orders = await Order.find().populate(
-    "userId",
-    "customerName firstName email customerNumber role",
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 50;
+  const skip = (page - 1) * limit;
+  const sortField = req.query.sortBy || "createdAt";
+  const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+  const { status, q, priority } = req.query;
+
+  const query = {};
+  if (status && status !== "ALL") {
+    if (status === "PENDING") query.status = "PLACED";
+    else if (status === "ACTIVE") query.status = { $in: ["ACCEPTED", "CONFIRMED", "PREPARING", "IN_PROGRESS", "READY"] };
+    else query.status = status;
+  }
+
+  if (priority) query.priorityTag = priority;
+
+  const [orders, total] = await Promise.all([
+    Order.find(query)
+      .populate("userId", "customerName firstName email customerNumber role")
+      .populate("assignedStaff", "customerName firstName email role")
+      .sort({ [sortField]: sortOrder })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Order.countDocuments(query),
+  ]);
+
+  let filtered = orders;
+  if (q) {
+    const search = q.trim().toLowerCase();
+    filtered = orders.filter((o) => {
+      const orderNo = String(o.orderNo || "").toLowerCase();
+      const customerName = String(o.userId?.customerName || o.userId?.firstName || "").toLowerCase();
+      const email = String(o.userId?.email || "").toLowerCase();
+      const customerNo = String(o.userId?.customerNumber || "").toLowerCase();
+      return (
+        orderNo.includes(search) ||
+        customerName.includes(search) ||
+        email.includes(search) ||
+        customerNo.includes(search)
+      );
+    });
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        data: filtered,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      "All orders"
+    )
   );
-  return res.status(200).json(new ApiResponse(200, orders, "All orders"));
 });
 
 const getOrderById = asynchandler(async (req, res) => {
   const { id } = req.params;
 
-  const order = await Order.findById(id);
+  const order = await Order.findById(id)
+    .populate("userId", "customerName firstName email customerNumber role")
+    .populate("assignedStaff", "customerName firstName email role")
+    .populate("statusHistory.updatedBy", "firstName customerName role");
+
   if (!order) throw new ApiError(404, "Order not found");
 
   const role = req.user?.role;
   const isAdminStaff = role === "ADMIN" || role === "STAFF";
-  const isOwner = String(order.userId) === String(req.user?._id); // ✅ FIXED
+  const isOwner = String(order.userId?._id || order.userId) === String(req.user?._id);
 
   if (!isAdminStaff && !isOwner) throw new ApiError(403, "Not allowed");
 
@@ -139,7 +335,6 @@ const getOrderInvoice = asynchandler(async (req, res) => {
   );
   if (!order) throw new ApiError(404, "Order not found");
 
-  // ✅ FIXED: use userId (not userId?._id after populate is fine too)
   const isOwner = String(order.userId?._id || order.userId) === String(req.user._id);
   const isStaffAdmin = ["STAFF", "ADMIN"].includes(req.user.role);
 
@@ -152,6 +347,7 @@ export {
   placeOrder,
   myOrders,
   updateMyOrder,
+  bulkUpdateOrderStatus,
   listAllOrders,
   getOrderById,
   getOrderInvoice,

@@ -5,10 +5,15 @@ import ChangeRequest from "../models/ChangeRequest.models.js";
 import User from "../models/User.models.js";
 
 export const listChangeRequests = asynchandler(async (req, res) => {
-  const { status = "PENDING" } = req.query;
+  const { status, type } = req.query;
 
-  const items = await ChangeRequest.find({ status })
+  const query = {};
+  if (status && status !== "ALL") query.status = status;
+  if (type && type !== "ALL") query.type = type;
+
+  const items = await ChangeRequest.find(query)
     .populate("userId", "customerName firstName email customerNumber role isActive")
+    .populate("reviewedBy", "customerName firstName role")
     .sort({ createdAt: -1 });
 
   return res.status(200).json(new ApiResponse(200, items, "Requests fetched"));
@@ -16,13 +21,14 @@ export const listChangeRequests = asynchandler(async (req, res) => {
 
 export const reviewChangeRequest = asynchandler(async (req, res) => {
   const { id } = req.params;
-  const { action, reviewNote } = req.body; // action: APPROVE | REJECT
+  const { action, reviewNote } = req.body; // action: APPROVE | REJECT | COMPLETE
 
   const doc = await ChangeRequest.findById(id);
   if (!doc) throw new ApiError(404, "Request not found");
-  if (doc.status !== "PENDING") throw new ApiError(400, "Request already reviewed");
 
-  if (!["APPROVE", "REJECT"].includes(action)) throw new ApiError(400, "Invalid action");
+  if (!["APPROVE", "REJECT", "COMPLETE"].includes(action)) {
+    throw new ApiError(400, "Invalid action");
+  }
 
   if (action === "REJECT") {
     doc.status = "REJECTED";
@@ -33,25 +39,24 @@ export const reviewChangeRequest = asynchandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, doc, "Request rejected"));
   }
 
-  // APPROVE: apply changes
+  // APPROVE or COMPLETE
   const user = await User.findById(doc.userId);
-  if (!user) throw new ApiError(404, "User not found");
-
-  if (doc.type === "PROFILE_UPDATE") {
-    Object.assign(user, doc.payload);
-    await user.save(); // will validate unique email/customerNumber
+  if (user) {
+    if (doc.type === "PROFILE_UPDATE" && doc.payload) {
+      Object.assign(user, doc.payload);
+      await user.save();
+    }
+    if (doc.type === "PASSWORD_RESET" && doc.payload?.newPassword) {
+      user.password = doc.payload.newPassword;
+      await user.save();
+    }
   }
 
-  if (doc.type === "PASSWORD_RESET") {
-    user.password = doc.payload.newPassword; // will hash via pre-save
-    await user.save();
-  }
-
-  doc.status = "APPROVED";
+  doc.status = action === "COMPLETE" ? "COMPLETED" : "APPROVED";
   doc.reviewNote = reviewNote || "";
   doc.reviewedBy = req.user._id;
   doc.reviewedAt = new Date();
   await doc.save();
 
-  return res.status(200).json(new ApiResponse(200, doc, "Request approved & applied"));
+  return res.status(200).json(new ApiResponse(200, doc, `Request marked as ${doc.status}`));
 });

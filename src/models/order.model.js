@@ -23,12 +23,49 @@ const orderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["PLACED", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"],
+      enum: [
+        "PLACED",
+        "ACCEPTED",
+        "CONFIRMED",
+        "PREPARING",
+        "IN_PROGRESS",
+        "READY",
+        "COMPLETED",
+        "DELIVERED",
+        "CANCELLED",
+      ],
       default: "PLACED",
       index: true,
     },
 
     note: { type: String, trim: true, maxlength: 1000 },
+    kitchenNotes: { type: String, trim: true, maxlength: 1000 },
+    staffNotes: { type: String, trim: true, maxlength: 1000 },
+
+    priorityTag: {
+      type: String,
+      enum: ["NORMAL", "HIGH", "URGENT"],
+      default: "NORMAL",
+      index: true,
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: ["CASH", "UPI", "CARD", "ONLINE", "PENDING"],
+      default: "PENDING",
+    },
+
+    deliveryAddress: { type: String, trim: true },
+    assignedStaff: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    statusHistory: [
+      {
+        status: { type: String, required: true },
+        note: { type: String, trim: true },
+        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

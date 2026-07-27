@@ -27,11 +27,40 @@ const createProduct = asynchandler(async (req, res) => {
 });
 
 const getProducts = asynchandler(async (req, res) => {
-  const query = req.user?.role === "ADMIN" ? {} : { isActive: true };
-  const products = await Product.find(query);
-  return res
-    .status(200)
-    .json(new ApiResponse(200, products, "Products fetched"));
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 50; // Products might need higher default limit
+  const skip = (page - 1) * limit;
+  const sortField = req.query.sortBy || "createdAt";
+  const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+  const { q, category } = req.query;
+
+  const query = req.user?.role === "ADMIN" ? { isDeleted: { $ne: true } } : { isActive: true, isDeleted: { $ne: true } };
+
+  if (q) {
+    query.name = new RegExp(q.trim(), "i");
+  }
+  if (category) {
+    query.category = category;
+  }
+
+  const [products, total] = await Promise.all([
+    Product.find(query)
+      .sort({ [sortField]: sortOrder })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(query)
+  ]);
+
+  return res.status(200).json(new ApiResponse(200, {
+    data: products,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    }
+  }, "Products fetched"));
 });
 
 const updateProduct = asynchandler(async (req, res) => {

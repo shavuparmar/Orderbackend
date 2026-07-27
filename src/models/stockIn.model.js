@@ -17,6 +17,19 @@ const stockInSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true, min: 0 },
 
     note: { type: String, trim: true, maxlength: 500 },
+    remarks: { type: String, trim: true, maxlength: 500 },
+    unit: { type: String, trim: true, default: "pcs" },
+    category: { type: String, trim: true },
+    supplier: { type: String, trim: true },
+    batchNumber: { type: String, trim: true, index: true },
+    purchaseDate: { type: Date, default: Date.now },
+    entryDate: { type: Date, default: Date.now },
+    type: {
+      type: String,
+      enum: ["STOCK_IN", "ADJUSTMENT", "RETURN_RESTOCK", "DISPOSED"],
+      default: "STOCK_IN",
+      index: true,
+    },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
   },

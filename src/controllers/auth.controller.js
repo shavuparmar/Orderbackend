@@ -22,14 +22,14 @@ const genrateRefereshTokensAndAccessToken = async (userID) => {
 };
 
 const loginUser = asynchandler(async (req, res) => {
-  const { customerNumber, email, password } = req.body;
+  const { emailOrNumber, password } = req.body;
 
-  if ((!customerNumber && !email) || !password) {
-    throw new ApiError(400, "Customer Number or Email and Password are required");
+  if (!emailOrNumber || !password) {
+    throw new ApiError(400, "Email or Customer number and Password are required");
   }
 
   const user = await User.findOne({
-    $or: [{ customerNumber }, { email }],
+    $or: [{ customerNumber: emailOrNumber }, { email: emailOrNumber }],
   }).select("+password +refreshToken");
 
   if (!user) throw new ApiError(404, "User not found");
