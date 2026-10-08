@@ -33,7 +33,7 @@ const changeRequestSchema = new mongoose.Schema(
       index: true
     },
 
-    requestedByRole: { type: String, enum: ["USER", "STAFF", "ADMIN"], required: true },
+    requestedByRole: { type: String, enum: ["CUSTOMER", "STAFF", "ADMIN"], required: true },
     note: { type: String, trim: true, maxlength: 1000 },
 
     reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

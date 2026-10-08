@@ -45,7 +45,7 @@ export const getDashboardStats = asynchandler(async (req, res) => {
   const revenueThisMonth = ordersThisMonth.filter(o => o.status !== "CANCELLED").reduce((sum, o) => sum + (o.grandTotal || 0), 0);
 
   // User & Staff Counts
-  const totalCustomers = allUsers.filter(u => u.role === "USER" || !u.role).length;
+  const totalCustomers = allUsers.filter(u => u.role === "CUSTOMER" || !u.role).length;
   const activeStaff = allUsers.filter(u => u.role === "STAFF" && u.isActive !== false).length;
 
   // Inventory Metrics
@@ -223,7 +223,7 @@ export const getStaffDashboardStats = asynchandler(async (req, res) => {
     ReturnProduct.find({ createdAt: { $gte: todayStart, $lte: todayEnd } }).lean(),
     Payment.find().lean(),
     StockIn.find({ createdAt: { $gte: todayStart, $lte: todayEnd } }).lean(),
-    User.countDocuments({ role: "USER" }),
+    User.countDocuments({ role: "CUSTOMER" }),
   ]);
 
   // Status breakdown for Today
@@ -248,7 +248,13 @@ export const getStaffDashboardStats = asynchandler(async (req, res) => {
   const lowStockItems = products.filter((p) => (p.stock || 0) <= lowStockThreshold);
   const outOfStockItems = products.filter((p) => (p.stock || 0) <= 0);
 
-  // Payments Collection Today
+  // Overall totals
+  const totalRevenue = allOrders
+    .filter((o) => o.status !== "CANCELLED")
+    .reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+  let totalCollection = 0;
+
+  // Payments Collection Today and Total
   let todayCollection = 0;
   let cashPayments = 0;
   let upiPayments = 0;
@@ -256,15 +262,19 @@ export const getStaffDashboardStats = asynchandler(async (req, res) => {
 
   payments.forEach((pDoc) => {
     (pDoc.entries || []).forEach((e) => {
+      const amt = e.amount || 0;
+      totalCollection += amt;
       const eDate = new Date(e.date || 0);
       if (eDate >= todayStart && eDate <= todayEnd) {
-        todayCollection += e.amount || 0;
-        if (e.paymentMethod === "CASH") cashPayments += e.amount || 0;
-        else if (e.paymentMethod === "UPI") upiPayments += e.amount || 0;
-        else onlinePayments += e.amount || 0;
+        todayCollection += amt;
+        if (e.paymentMethod === "CASH") cashPayments += amt;
+        else if (e.paymentMethod === "UPI") upiPayments += amt;
+        else onlinePayments += amt;
       }
     });
   });
+
+  const totalPendingAmount = totalRevenue - totalCollection > 0 ? totalRevenue - totalCollection : 0;
 
   // Hourly Order distribution (00:00 to 23:00)
   const hourlyOrders = Array(24).fill(0);
@@ -324,6 +334,7 @@ export const getStaffDashboardStats = asynchandler(async (req, res) => {
       {
         kpis: {
           todayOrdersCount: todayOrders.length,
+          totalOrdersCount: allOrders.length,
           todayPlaced,
           todayAccepted,
           todayPreparing,
@@ -331,12 +342,15 @@ export const getStaffDashboardStats = asynchandler(async (req, res) => {
           todayDelivered,
           todayCancelled,
           todayRevenue,
+          totalRevenue,
           activeOrdersCount,
           totalCustomersServed: usersCount,
           lowStockCount: lowStockItems.length,
           outOfStockCount: outOfStockItems.length,
           todayReturnsCount: todayReturns.length,
           todayCollection,
+          totalCollection,
+          totalPendingAmount,
           cashPayments,
           upiPayments,
           onlinePayments,

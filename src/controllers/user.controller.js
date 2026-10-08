@@ -45,7 +45,7 @@ export const createUser = asynchandler(async (req, res) => {
     email,
     customerNumber,
     password,
-    role: role || "USER",
+    role: role || "CUSTOMER",
   });
 
   const created = await User.findById(user._id).select("-password -refreshToken");
@@ -96,6 +96,24 @@ export const toggleActive = asynchandler(async (req, res) => {
 
   if (!user) throw new ApiError(404, "User not found");
   return res.status(200).json(new ApiResponse(200, user, "User updated"));
+});
+
+export const updateRole = asynchandler(async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  
+  if (!role) {
+    throw new ApiError(400, "Role is required");
+  }
+
+  const user = await User.findByIdAndUpdate(
+    id,
+    { role },
+    { new: true, runValidators: true }
+  ).select("-password -refreshToken");
+
+  if (!user) throw new ApiError(404, "User not found");
+  return res.status(200).json(new ApiResponse(200, user, "User role updated"));
 });
 
 export const deleteUser = asynchandler(async (req, res) => {
@@ -175,7 +193,7 @@ export const searchUsers = asynchandler(async (req, res) => {
 export const requestProfileUpdate = asynchandler(async (req, res) => {
   const { customerName, firstName, email, customerNumber, note } = req.body;
 
-  if (!["USER", "STAFF"].includes(req.user.role)) {
+  if (!["CUSTOMER", "STAFF"].includes(req.user.role)) {
     throw new ApiError(403, "Only User/Staff can request changes");
   }
 
@@ -206,7 +224,7 @@ export const requestPasswordReset = asynchandler(async (req, res) => {
     throw new ApiError(400, "Password must be at least 6 characters");
   }
 
-  if (!["USER", "STAFF"].includes(req.user.role)) {
+  if (!["CUSTOMER", "STAFF"].includes(req.user.role)) {
     throw new ApiError(403, "Only User/Staff can request password change");
   }
 
@@ -236,7 +254,7 @@ export const createGenericRequest = asynchandler(async (req, res) => {
     type: type || "GENERAL",
     payload: payload || {},
     status: "PENDING",
-    requestedByRole: req.user.role || "USER",
+    requestedByRole: req.user.role || "CUSTOMER",
     note: note || "",
   });
 

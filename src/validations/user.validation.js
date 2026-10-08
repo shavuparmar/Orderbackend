@@ -6,7 +6,7 @@ export const createUserSchema = z.object({
   email: z.string().email("Invalid email").trim().toLowerCase(),
   customerNumber: z.string().min(1, "Customer number is required").trim(),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["ADMIN", "USER", "STAFF"]).optional(),
+  role: z.enum(["ADMIN", "CUSTOMER", "STAFF"]).optional(),
 });
 
 export const loginUserSchema = z.object({

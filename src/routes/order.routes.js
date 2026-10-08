@@ -17,16 +17,16 @@ import {
 
 const router = Router();
 
-// USER
-router.post("/", verifyJWT, allowRoles("USER"), checkOrderWindow, validate(createOrderSchema), placeOrder);
-router.get("/my", verifyJWT, allowRoles("USER"), myOrders);
+// CUSTOMER
+router.post("/", verifyJWT, allowRoles("CUSTOMER"), checkOrderWindow, validate(createOrderSchema), placeOrder);
+router.get("/my", verifyJWT, allowRoles("CUSTOMER"), myOrders);
 
 // STAFF & ADMIN
 router.get("/", verifyJWT, allowRoles("ADMIN", "STAFF"), listAllOrders);
 router.patch("/bulk-status", verifyJWT, allowRoles("ADMIN", "STAFF"), bulkUpdateOrderStatus);
 
-router.get("/:id", verifyJWT, allowRoles("USER", "ADMIN", "STAFF"), getOrderById);
-router.patch("/:id", verifyJWT, allowRoles("USER", "ADMIN", "STAFF"), updateMyOrder);
+router.get("/:id", verifyJWT, allowRoles("CUSTOMER", "ADMIN", "STAFF"), getOrderById);
+router.patch("/:id", verifyJWT, allowRoles("CUSTOMER", "ADMIN", "STAFF"), updateMyOrder);
 
 router.get("/:id/invoice", verifyJWT, getOrderInvoice);
 

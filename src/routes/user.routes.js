@@ -5,7 +5,7 @@ import { validate } from "../middlewares/validate.middleware.js";
 import { createUserSchema, loginUserSchema, updateProfileSchema, passwordResetSchema } from "../validations/user.validation.js";
 
 import { loginUser, logoutUser, getMe, refreshToken } from "../controllers/auth.controller.js";
-import { createUser, listUsers, toggleActive, searchUsers, updateMyProfile, deleteUser, createGenericRequest } from "../controllers/user.controller.js";
+import { createUser, listUsers, toggleActive, searchUsers, updateMyProfile, deleteUser, createGenericRequest, updateRole } from "../controllers/user.controller.js";
 import {requestProfileUpdate, requestPasswordReset } from "../controllers/user.controller.js";
 const router = Router();
 
@@ -21,6 +21,7 @@ router.post("/create", verifyJWT, allowRoles("ADMIN"), validate(createUserSchema
 router.get("/search", verifyJWT, allowRoles("ADMIN", "STAFF"), searchUsers);
 router.get("/", verifyJWT, allowRoles("ADMIN", "STAFF"), listUsers);
 router.patch("/:id/active", verifyJWT, allowRoles("ADMIN"), toggleActive);
+router.patch("/:id/role", verifyJWT, allowRoles("ADMIN"), updateRole);
 router.delete("/:id", verifyJWT, allowRoles("ADMIN"), deleteUser);
 
 router.post("/request", verifyJWT, createGenericRequest);

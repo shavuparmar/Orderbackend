@@ -39,6 +39,6 @@ export const requireStaffOrAdmin = (req, _res, next) => {
 };
 
 export const requireUser = (req, _res, next) => {
-  if (req.user?.role !== "USER") throw new ApiError(403, "User access only");
+  if (req.user?.role !== "CUSTOMER") throw new ApiError(403, "Customer access only");
   next();
 };

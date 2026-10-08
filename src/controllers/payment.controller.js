@@ -37,6 +37,33 @@ const addPaymentEntry = asynchandler(async (req, res) => {
   return res.status(201).json(new ApiResponse(201, payment, "Payment entry added"));
 });
 
+
+export const getMyPaymentSummary = asynchandler(async (req, res) => {
+  const userId = req.user._id;
+
+  const user = await User.findById(userId).select("_id customerName customerNumber email");
+  if (!user) throw new ApiError(404, "User not found");
+
+  const orders = await Order.find({ userId, status: { $ne: "CANCELLED" } });
+  const totalOrderAmount = orders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+  const lastOrderAt = orders.length > 0 ? orders[orders.length - 1].createdAt : null;
+
+  const payment = await Payment.findOne({ userId }).populate("entries.updatedBy", "firstName role");
+  const entries = payment?.entries || [];
+  const totalReceived = entries.reduce((sum, e) => sum + (e.amount || 0), 0);
+  
+  const pendingAmount = totalOrderAmount - totalReceived;
+
+  return res.status(200).json(new ApiResponse(200, {
+    user,
+    totalOrderAmount,
+    totalReceived,
+    pendingAmount: pendingAmount > 0 ? pendingAmount : 0,
+    lastOrderAt,
+    entries
+  }, "My payment summary"));
+});
+
 export const getUserPaymentSummary = asynchandler(async (req, res) => {
   const { userId } = req.params;
 
@@ -94,6 +121,48 @@ const deletePaymentEntry = asynchandler(async (req, res) => {
   await payment.save();
 
   return res.status(200).json(new ApiResponse(200, payment, "Payment entry deleted"));
+});
+
+export const getAllUsersPaymentSummary = asynchandler(async (req, res) => {
+  const [users, orders, payments] = await Promise.all([
+    User.find({ $or: [{ role: "CUSTOMER" }, { role: { $exists: false } }] }).select("_id customerName firstName customerNumber email"),
+    Order.find({ status: { $ne: "CANCELLED" } }).select("userId grandTotal status paymentMethod createdAt"),
+    Payment.find().lean()
+  ]);
+
+  const summary = users.map(u => {
+    const userOrders = orders.filter(o => String(o.userId) === String(u._id));
+    const totalOrderAmount = userOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0);
+    
+    const userPayment = payments.find(p => String(p.userId) === String(u._id));
+    const totalReceived = (userPayment?.entries || []).reduce((sum, e) => sum + (e.amount || 0), 0);
+    const pendingAmount = totalOrderAmount - totalReceived;
+    
+    return {
+      user: u,
+      totalOrderAmount,
+      totalReceived,
+      pendingAmount: pendingAmount > 0 ? pendingAmount : 0,
+      paymentStatus: totalOrderAmount === 0 ? "NO_ORDERS" : (totalReceived >= totalOrderAmount ? "PAID" : (totalReceived > 0 ? "PARTIAL" : "PENDING")),
+      lastOrderDate: userOrders.length > 0 ? userOrders[userOrders.length - 1].createdAt : null
+    };
+  });
+
+  // Calculate global totals
+  const globalTotalAmount = summary.reduce((sum, s) => sum + s.totalOrderAmount, 0);
+  const globalPaidAmount = summary.reduce((sum, s) => sum + s.totalReceived, 0);
+  const globalPendingAmount = summary.reduce((sum, s) => sum + s.pendingAmount, 0);
+  const globalPendingPayments = summary.filter(s => s.pendingAmount > 0).length;
+
+  return res.status(200).json(new ApiResponse(200, {
+    summary,
+    globals: {
+      globalTotalAmount,
+      globalPaidAmount,
+      globalPendingAmount,
+      globalPendingPayments
+    }
+  }, "All users payment summary"));
 });
 
 export { getMyStatement, getUserStatement, addPaymentEntry, updatePaymentEntry, deletePaymentEntry };
