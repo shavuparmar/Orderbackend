@@ -113,7 +113,8 @@ async function test() {
 
   // 8. Customer My Orders
   res = await req('/orders/my', { headers: custH });
-  if (res.status !== 200 || !Array.isArray(res.data.data) || res.data.data.length === 0) {
+  const orderList = Array.isArray(res.data.data) ? res.data.data : res.data.data?.data;
+  if (res.status !== 200 || !Array.isArray(orderList) || orderList.length === 0) {
     console.error('Customer My Orders failed:', res); return;
   }
   console.log('8. Customer My Orders (/api/v1/orders/my): PASS');

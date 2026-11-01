@@ -6,6 +6,7 @@ import Product from "../models/product.model.js";
 import Payment from "../models/payment.model.js";
 import ReturnProduct from "../models/ReturnProduct.model.js";
 import StockIn from "../models/stockIn.model.js";
+import ChangeRequest from "../models/ChangeRequest.models.js";
 
 export const getDashboardStats = asynchandler(async (req, res) => {
   const now = new Date();
@@ -19,14 +20,16 @@ export const getDashboardStats = asynchandler(async (req, res) => {
     allUsers,
     allPayments,
     allReturns,
-    allStockIns
+    allStockIns,
+    allRequests
   ] = await Promise.all([
-    Order.find().sort({ createdAt: -1 }).lean(),
+    Order.find().populate("userId", "customerName firstName customerNumber").sort({ createdAt: -1 }).lean(),
     Product.find({ isDeleted: false }).lean(),
     User.find().lean(),
     Payment.find().lean(),
     ReturnProduct.find().populate("productId", "price name").lean(),
     StockIn.find().sort({ createdAt: -1 }).limit(10).lean(),
+    ChangeRequest.find().sort({ createdAt: -1 }).lean(),
   ]);
 
   // Order Metrics
@@ -180,7 +183,12 @@ export const getDashboardStats = asynchandler(async (req, res) => {
           todayCollection,
           averageOrderValue,
           orderCompletionRate,
-          returnRate
+          returnRate,
+          totalRequests: allRequests.length,
+          pendingRequests: allRequests.filter(r => r.status === "PENDING").length,
+          approvedRequests: allRequests.filter(r => r.status === "APPROVED" || r.status === "COMPLETED").length,
+          customerRequests: allRequests.filter(r => r.type === "CUSTOMER_REGISTRATION" || r.type === "CUSTOMER_REQUEST").length,
+          staffRequests: allRequests.filter(r => r.type === "STAFF_REGISTRATION" || r.type === "STAFF_REQUEST").length,
         },
         charts: {
           weeklyTrend: last7Days,
@@ -193,7 +201,10 @@ export const getDashboardStats = asynchandler(async (req, res) => {
           ]
         },
         recentActivities: recentActivities.slice(0, 8),
-        latestOrders: allOrders.slice(0, 6)
+        latestOrders: allOrders.slice(0, 6),
+        recentCustomers: allUsers.filter(u => u.role === "CUSTOMER").sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5),
+        recentStaff: allUsers.filter(u => u.role === "STAFF").sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5),
+        recentRequests: allRequests.slice(0, 6)
       },
       "Enterprise dashboard statistics fetched successfully"
     )

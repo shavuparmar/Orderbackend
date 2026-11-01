@@ -101,7 +101,13 @@ const updatePaymentEntry = asynchandler(async (req, res) => {
   const entry = payment.entries.id(entryId);
   if (!entry) throw new ApiError(404, "Entry not found");
 
-  if (amount !== undefined) entry.amount = Number(amount);
+  if (amount !== undefined) {
+    const num = Number(amount);
+    if (!Number.isFinite(num) || num <= 0) {
+      throw new ApiError(400, "Amount must be a positive number");
+    }
+    entry.amount = num;
+  }
   if (note !== undefined) entry.note = note;
   if (date !== undefined) entry.date = new Date(date);
   entry.updatedBy = req.user._id;

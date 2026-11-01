@@ -30,14 +30,16 @@ const getProducts = asynchandler(async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 50; // Products might need higher default limit
   const skip = (page - 1) * limit;
-  const sortField = req.query.sortBy || "createdAt";
+  const safeSortFields = ["createdAt", "name", "price", "stock", "updatedAt"];
+  const sortField = safeSortFields.includes(req.query.sortBy) ? req.query.sortBy : "createdAt";
   const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
   const { q, category } = req.query;
 
   const query = req.user?.role === "ADMIN" ? { isDeleted: { $ne: true } } : { isActive: true, isDeleted: { $ne: true } };
 
   if (q) {
-    query.name = new RegExp(q.trim(), "i");
+    const escaped = q.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+    query.name = new RegExp(escaped, "i");
   }
   if (category) {
     query.category = category;

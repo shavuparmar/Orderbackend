@@ -20,16 +20,17 @@ async function test() {
   console.log('Admin login SUCCESS');
 
   console.log('2. Create Staff');
+  const staffEmail = `staff_${Date.now()}@korder.com`;
   res = await fetch(`${API}/users/create`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
       customerName: 'Test Staff',
       firstName: 'Test',
-      email: 'staff@korder.com',
-      customerNumber: '0987654321',
+      email: staffEmail,
+      customerNumber: `${Date.now()}`.slice(-10),
       password: 'password123',
-      role: 'staff'
+      role: 'STAFF'
     })
   });
   data = await res.json();
@@ -44,7 +45,7 @@ async function test() {
   res = await fetch(`${API}/users/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ emailOrNumber: 'staff@korder.com', password: 'password123' })
+    body: JSON.stringify({ emailOrNumber: staffEmail, password: 'password123' })
   });
   data = await res.json();
   if (!res.ok) {

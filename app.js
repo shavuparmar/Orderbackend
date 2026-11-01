@@ -14,6 +14,7 @@ import SettingsRouter from "./src/routes/settings.routes.js";
 import stockInRoutes from "./src/routes/stockIn.routes.js";
 import ReportsRouter from "./src/routes/reports.routes.js";
 import ReturnRouter from "./src/routes/returns.routes.js";
+import AdminRouter from "./src/routes/admin.routes.js";
 import { errorHandler } from "./src/middlewares/error.middleware.js";
 
 const app = express();
@@ -73,6 +74,19 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 
+// Dedicated stricter rate limit on authentication to prevent brute force
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: "Too many login attempts. Please try again after 15 minutes."
+  }
+});
+app.use("/api/v1/users/login", authLimiter);
+
 // 8. Routes
 app.get("/ping", (req, res) => res.json({ ok: true }));
 app.use("/api/v1/users", UserRouter);
@@ -82,6 +96,7 @@ app.use("/api/v1/payments", PaymentRouter);
 app.use("/api/v1/settings", SettingsRouter);
 app.use("/api/v1/reports", ReportsRouter);
 app.use("/api/v1/returns", ReturnRouter);
+app.use("/api/v1/admin", AdminRouter);
 app.use("/api/v1/stock-in", stockInRoutes);
 app.use("/api/stock-in", stockInRoutes);
 

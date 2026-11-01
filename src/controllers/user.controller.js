@@ -56,7 +56,8 @@ export const listUsers = asynchandler(async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 10;
   const skip = (page - 1) * limit;
-  const sortField = req.query.sortBy || "createdAt";
+  const safeSortFields = ["createdAt", "customerName", "firstName", "email", "customerNumber", "role"];
+  const sortField = safeSortFields.includes(req.query.sortBy) ? req.query.sortBy : "createdAt";
   const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
   const roleFilter = req.query.role;
 
@@ -141,7 +142,8 @@ export const searchUsers = asynchandler(async (req, res) => {
     return res.status(200).json(new ApiResponse(200, { data: [], pagination: { total: 0, page, limit, totalPages: 0 } }, "No query provided"));
   }
 
-  const regex = new RegExp(q.trim(), "i");
+  const escaped = q.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+  const regex = new RegExp(escaped, "i");
   const query = {
     $or: [
       { customerName: regex },
@@ -259,4 +261,115 @@ export const createGenericRequest = asynchandler(async (req, res) => {
   });
 
   return res.status(201).json(new ApiResponse(201, reqDoc, "Request submitted successfully"));
+});
+
+export const adminUpdateUser = asynchandler(async (req, res) => {
+  const { id } = req.params;
+  const { customerName, firstName, email, customerNumber, isActive, role } = req.body;
+
+  const user = await User.findById(id);
+  if (!user) throw new ApiError(404, "User not found");
+
+  if (email && email.trim().toLowerCase() !== user.email.toLowerCase()) {
+    const existed = await User.findOne({ email: email.trim().toLowerCase(), _id: { $ne: id } });
+    if (existed) throw new ApiError(409, "Another user already exists with this email");
+    user.email = email.trim().toLowerCase();
+  }
+
+  if (customerNumber && String(customerNumber).trim() !== user.customerNumber) {
+    const existed = await User.findOne({ customerNumber: String(customerNumber).trim(), _id: { $ne: id } });
+    if (existed) throw new ApiError(409, "Another user already exists with this mobile / customer number");
+    user.customerNumber = String(customerNumber).trim();
+  }
+
+  if (customerName) {
+    user.customerName = customerName.trim();
+    user.firstName = firstName ? firstName.trim() : (user.firstName || customerName.trim().split(" ")[0]);
+  } else if (firstName) {
+    user.firstName = firstName.trim();
+  }
+
+  if (isActive !== undefined) {
+    user.isActive = !!isActive;
+  }
+
+  if (role && ["ADMIN", "CUSTOMER", "STAFF"].includes(role)) {
+    if (String(id) !== String(req.user._id)) {
+      user.role = role;
+    }
+  }
+
+  await user.save();
+  const updated = await User.findById(id).select("-password -refreshToken");
+  return res.status(200).json(new ApiResponse(200, updated, "User updated successfully"));
+});
+
+export const adminResetPassword = asynchandler(async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 6) {
+    throw new ApiError(400, "Password must be at least 6 characters long");
+  }
+
+  const user = await User.findById(id);
+  if (!user) throw new ApiError(404, "User not found");
+
+  user.password = newPassword;
+  user.refreshToken = undefined;
+  await user.save();
+
+  return res.status(200).json(new ApiResponse(200, null, "Password updated successfully"));
+});
+
+export const submitPublicRequest = asynchandler(async (req, res) => {
+  const { applicantName, mobileNumber, email, address, department, requestType, description, note } = req.body;
+
+  if (!applicantName || !applicantName.trim()) {
+    throw new ApiError(400, "Applicant name is required");
+  }
+
+  const cleanMobile = String(mobileNumber || "").replace(/\D/g, "");
+  if (!cleanMobile || cleanMobile.length < 10) {
+    throw new ApiError(400, "Please provide a valid 10-digit mobile number");
+  }
+
+  const type = requestType || "CUSTOMER_REGISTRATION";
+  const validTypes = [
+    "CUSTOMER_REGISTRATION",
+    "STAFF_REGISTRATION",
+    "CUSTOMER_REQUEST",
+    "STAFF_REQUEST",
+    "GENERAL"
+  ];
+  if (!validTypes.includes(type)) {
+    throw new ApiError(400, "Invalid request type");
+  }
+
+  // Prevent duplicate spam submissions within 5 minutes
+  const recentExisted = await ChangeRequest.findOne({
+    mobileNumber: cleanMobile,
+    status: "PENDING",
+    type,
+    createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) }
+  });
+  if (recentExisted) {
+    return res.status(200).json(new ApiResponse(200, { requestId: recentExisted._id }, "Your request has already been received and is pending review."));
+  }
+
+  const newDoc = await ChangeRequest.create({
+    applicantName: applicantName.trim(),
+    mobileNumber: cleanMobile,
+    email: email ? email.trim().toLowerCase() : undefined,
+    address: address ? address.trim() : undefined,
+    department: department ? department.trim() : undefined,
+    title: `${type === "STAFF_REGISTRATION" ? "Staff" : "Customer"} Application: ${applicantName.trim()}`,
+    description: (description || note || "New account / onboarding application").trim(),
+    type,
+    status: "PENDING",
+    requestedByRole: "APPLICANT",
+    note: (note || "").trim(),
+  });
+
+  return res.status(201).json(new ApiResponse(201, { requestId: newDoc._id }, "Request submitted successfully. The Keshav Krupa administration will review your request."));
 });

@@ -123,6 +123,9 @@ const updateMyOrder = asynchandler(async (req, res) => {
     throw new ApiError(403, "Order cannot be updated after confirmation");
 
   if (status && status !== order.status) {
+    if (!isStaffOrAdmin) {
+      throw new ApiError(403, "Customers are not authorized to update order status");
+    }
     const validStatuses = [
       "PLACED",
       "ACCEPTED",
@@ -150,11 +153,15 @@ const updateMyOrder = asynchandler(async (req, res) => {
 
   if (note !== undefined) order.note = note;
   if (kitchenNotes !== undefined) order.kitchenNotes = kitchenNotes;
-  if (staffNotes !== undefined) order.staffNotes = staffNotes;
-  if (priorityTag !== undefined) order.priorityTag = priorityTag;
-  if (assignedStaff !== undefined) order.assignedStaff = assignedStaff;
   if (paymentMethod !== undefined) order.paymentMethod = paymentMethod;
   if (deliveryAddress !== undefined) order.deliveryAddress = deliveryAddress;
+
+  // Staff and Admin only fields
+  if (isStaffOrAdmin) {
+    if (staffNotes !== undefined) order.staffNotes = staffNotes;
+    if (priorityTag !== undefined) order.priorityTag = priorityTag;
+    if (assignedStaff !== undefined) order.assignedStaff = assignedStaff;
+  }
 
   if (items !== undefined && !isStaffOrAdmin) {
     if (!Array.isArray(items) || items.length === 0)
@@ -249,7 +256,8 @@ const listAllOrders = asynchandler(async (req, res) => {
   const page = parseInt(req.query.page, 10) || 1;
   const limit = parseInt(req.query.limit, 10) || 50;
   const skip = (page - 1) * limit;
-  const sortField = req.query.sortBy || "createdAt";
+  const safeSortFields = ["createdAt", "grandTotal", "status", "updatedAt", "orderNo"];
+  const sortField = safeSortFields.includes(req.query.sortBy) ? req.query.sortBy : "createdAt";
   const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
   const { status, q, priority } = req.query;
 
